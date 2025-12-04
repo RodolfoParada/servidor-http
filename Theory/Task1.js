@@ -5,7 +5,7 @@
 const http = require('http');
 
 // Crear servidor
-const servidor = http.createServer((request, response) => {
+let servidor = http.createServer((request, response) => {
   // Esta función se ejecuta por cada petición
   console.log(`📨 Petición recibida: ${request.method} ${request.url}`);
 
@@ -22,7 +22,7 @@ servidor.listen(PUERTO, () => {
 
 // // Para detener el servidor: servidor.close()
 // Estructura de Request y Response
-const http = require('http');
+// const http = require('http');
 
  servidor = http.createServer((request, response) => {
   // Objeto REQUEST (petición del cliente)
@@ -44,10 +44,10 @@ const http = require('http');
   response.end('¡Fin de la respuesta!');
 });
 
-servidor.listen(3000);
+servidor.listen(3001);
 // Manejo de Diferentes Tipos de Contenido
 
-const http = require('http');
+// const http = require('http');
 
 servidor = http.createServer((request, response) => {
   // Respuesta HTML
@@ -84,8 +84,8 @@ servidor = http.createServer((request, response) => {
   response.end('Servidor básico de Node.js');
 });
 
-servidor.listen(3000, () => {
+servidor.listen(3002, () => {
   console.log('🚀 Servidor en http://localhost:3000');
-  console.log('📄 Prueba: http://localhost:3000/html');
-  console.log('🔧 Prueba: http://localhost:3000/json');
+  console.log('📄 Prueba: http://localhost:3001/html');
+  console.log('🔧 Prueba: http://localhost:3002/json');
 });
