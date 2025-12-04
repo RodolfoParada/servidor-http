@@ -5,7 +5,7 @@
 const http = require('http');
 const url = require('url'); // Módulo built-in para URLs
 
-const servidor = http.createServer((request, response) => {
+let servidor = http.createServer((request, response) => {
   // Parsear URL completa
   const parsedUrl = url.parse(request.url, true); // true para parsear query
 
@@ -34,8 +34,8 @@ const servidor = http.createServer((request, response) => {
 
 servidor.listen(3000);
 // API REST Simple con Query Parameters
-const http = require('http');
-const url = require('url');
+// const http = require('http');
+// const url = require('url');
 
 // Base de datos simulada
 let usuarios = [
@@ -129,7 +129,7 @@ servidor = http.createServer((request, response) => {
   `);
 });
 
-servidor.listen(3000, () => {
-  console.log('🚀 API REST en http://localhost:3000');
+servidor.listen(3001, () => {
+  console.log('🚀 API REST en http://localhost:3001');
   console.log('📖 Documentación en http://localhost:3000');
 });
