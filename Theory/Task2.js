@@ -4,7 +4,7 @@
 // Routing Simple por URL
 const http = require('http');
 
-const servidor = http.createServer((request, response) => {
+let servidor = http.createServer((request, response) => {
   const { method, url } = request;
   console.log(`${method} ${url}`);
 
@@ -50,7 +50,7 @@ const servidor = http.createServer((request, response) => {
 
 servidor.listen(3000);
 // Sistema de Routing Modular
-const http = require('http');
+// const http = require('http');
 
 // Sistema de routing simple
 class Router {
@@ -120,7 +120,7 @@ router.get('/productos/1', (request, response) => {
 });
 
 // Crear servidor con router
-servidor = http.createServer((request, response) => {
+ servidor = http.createServer((request, response) => {
   const { method, url } = request;
 
   // Buscar ruta en el router
@@ -136,6 +136,6 @@ servidor = http.createServer((request, response) => {
   }
 });
 
-servidor.listen(3000, () => {
-  console.log('🚀 Servidor con routing en http://localhost:3000');
+servidor.listen(3001, () => {
+  console.log('🚀 Servidor con routing en http://localhost:3001');
 });
