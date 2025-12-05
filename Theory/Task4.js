@@ -1,6 +1,6 @@
 // Task 4: Manejo de Errores y Respuestas Avanzadas (6 minutos)
 // Implementar manejo robusto de errores y diferentes tipos de respuestas.
-
+  
 // Códigos de Estado HTTP
 const http = require('http');
 
