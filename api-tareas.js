@@ -2,266 +2,265 @@ const http = require('http');
 const url = require('url');
 const fs = require('fs').promises;
 const path = require('path');
-
-// Base de datos en memoria
+// --- BASE DE DATOS ---
 let tareas = [
-  { id: 1, titulo: 'Aprender Node.js', descripcion: 'Completar tutoriales básicos', completada: false, prioridad: 'alta' },
-  { id: 2, titulo: 'Practicar HTTP', descripcion: 'Crear servidor básico', completada: true, prioridad: 'media' }
+  { id: 1, titulo: "Aprender Node.js", descripcion: "Curso básico", completada: false, prioridad: "alta", fechaCreacion: "2025-01-01" },
+  { id: 2, titulo: "Practicar HTTP", descripcion: "Servidor básico", completada: true, prioridad: "media", fechaCreacion: "2025-01-03" }
 ];
-
 let siguienteId = 3;
 
-// Funciones helper
-function enviarJSON(response, data, statusCode = 200) {
-  response.writeHead(statusCode, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE',
-    'Access-Control-Allow-Headers': 'Content-Type'
-  });
-  response.end(JSON.stringify(data, null, 2));
+// --- API KEYS (solo ejemplo) ---
+const API_KEYS = new Set(["12345", "ABCDE"]);
+
+// --- LOGGING ---
+function log(mensaje) {
+  console.log(`[${new Date().toISOString()}] ${mensaje}`);
 }
 
-function enviarHTML(response, html, statusCode = 200) {
-  response.writeHead(statusCode, {
-    'Content-Type': 'text/html',
-    'Access-Control-Allow-Origin': '*'
-  });
-  response.end(html);
+// --- VALIDACIÓN ---
+function validarTarea(obj) {
+  const errores = [];
+
+  if (!obj.titulo || typeof obj.titulo !== "string")
+    errores.push("Título inválido");
+
+  if (obj.descripcion && typeof obj.descripcion !== "string")
+    errores.push("Descripción inválida");
+
+  if (obj.prioridad && !["alta", "media", "baja"].includes(obj.prioridad))
+    errores.push("Prioridad inválida");
+
+  if (obj.completada !== undefined && typeof obj.completada !== "boolean")
+    errores.push("El campo 'completada' debe ser booleano");
+
+  return errores;
 }
 
-function obtenerCuerpo(request) {
-  return new Promise((resolve, reject) => {
-    let body = '';
-
-    request.on('data', chunk => {
-      body += chunk.toString();
-    });
-
-    request.on('end', () => {
+// --- HELPERS ---
+function obtenerCuerpo(req) {
+  return new Promise((res, rej) => {
+    let data = "";
+    req.on("data", chunk => (data += chunk));
+    req.on("end", () => {
       try {
-        resolve(JSON.parse(body));
-      } catch (error) {
-        reject(new Error('JSON inválido'));
+        res(JSON.parse(data || "{}"));
+      } catch {
+        rej("JSON inválido");
       }
     });
-
-    request.on('error', reject);
   });
 }
 
-// Servidor principal
-const servidor = http.createServer(async (request, response) => {
-  const { method } = request;
-  const parsedUrl = url.parse(request.url, true);
-  const { pathname, query } = parsedUrl;
+function enviarJSON(res, data, status = 200) {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(JSON.stringify(data, null, 2));
+}
 
-  try {
-    // Rutas de la API REST
+// --- CHECK API KEY ---
+function checkAuth(req, res) {
+  const key = req.headers["x-api-key"];
+  if (!API_KEYS.has(key)) {
+    enviarJSON(res, { error: "API Key inválida" }, 401);
+    return false;
+  }
+  return true;
+}
 
-    // GET /api/tareas - Listar tareas
-    if (method === 'GET' && pathname === '/api/tareas') {
-      let resultados = [...tareas];
+// --- SERVIDOR ---
+const server = http.createServer(async (req, res) => {
+  const parsed = url.parse(req.url, true);
+  const { pathname, query } = parsed;
+  const method = req.method;
 
-      // Filtros
-      if (query.completada !== undefined) {
-        const completada = query.completada === 'true';
-        resultados = resultados.filter(t => t.completada === completada);
-      }
+  // Logging general
+  log(`${method} ${pathname}`);
 
-      if (query.prioridad) {
-        resultados = resultados.filter(t => t.prioridad === query.prioridad);
-      }
+  // Página principal
+  if (method === "GET" && pathname === "/") {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    return res.end(INTERFAZ_HTML);
+  }
 
-      // Búsqueda
-      if (query.q) {
-        const termino = query.q.toLowerCase();
-        resultados = resultados.filter(t =>
-          t.titulo.toLowerCase().includes(termino) ||
-          t.descripcion.toLowerCase().includes(termino)
-        );
-      }
+  // Autenticación requerida para todo /api
+  if (pathname.startsWith("/api") && !checkAuth(req, res)) return;
 
-      enviarJSON(response, {
-        total: resultados.length,
-        tareas: resultados
-      });
-      return;
+  // --- LISTAR TAREAS ---
+  if (method === "GET" && pathname === "/api/tareas") {
+    let resultado = [...tareas];
+
+    if (query.completada !== undefined) {
+      resultado = resultado.filter(t => t.completada === (query.completada === "true"));
     }
 
-    // GET /api/tareas/:id - Obtener tarea específica
-    if (method === 'GET' && pathname.startsWith('/api/tareas/')) {
-      const id = parseInt(pathname.split('/')[3]);
-      const tarea = tareas.find(t => t.id === id);
-
-      if (!tarea) {
-        enviarJSON(response, { error: 'Tarea no encontrada' }, 404);
-        return;
-      }
-
-      enviarJSON(response, tarea);
-      return;
+    if (query.prioridad) {
+      resultado = resultado.filter(t => t.prioridad === query.prioridad);
     }
 
-    // POST /api/tareas - Crear nueva tarea
-    if (method === 'POST' && pathname === '/api/tareas') {
-      const data = await obtenerCuerpo(request);
+    if (query.q) {
+      const q = query.q.toLowerCase();
+      resultado = resultado.filter(t =>
+        t.titulo.toLowerCase().includes(q) ||
+        t.descripcion.toLowerCase().includes(q)
+      );
+    }
 
-      if (!data.titulo) {
-        enviarJSON(response, { error: 'El título es requerido' }, 400);
-        return;
-      }
+    return enviarJSON(res, { total: resultado.length, tareas: resultado });
+  }
 
-      const nuevaTarea = {
+  // --- OBTENER TAREA ---
+  if (method === "GET" && pathname.startsWith("/api/tareas/")) {
+    const id = parseInt(pathname.split("/")[3]);
+    const tarea = tareas.find(t => t.id === id);
+    if (!tarea) return enviarJSON(res, { error: "No encontrada" }, 404);
+    return enviarJSON(res, tarea);
+  }
+
+  // --- CREAR ---
+  if (method === "POST" && pathname === "/api/tareas") {
+    try {
+      const body = await obtenerCuerpo(req);
+      const errores = validarTarea(body);
+      if (errores.length) return enviarJSON(res, { errores }, 400);
+
+      const nueva = {
         id: siguienteId++,
-        titulo: data.titulo,
-        descripcion: data.descripcion || '',
+        titulo: body.titulo,
+        descripcion: body.descripcion || "",
+        prioridad: body.prioridad || "media",
         completada: false,
-        prioridad: data.prioridad || 'media',
-        fechaCreacion: new Date().toISOString()
+        fechaCreacion: new Date().toISOString().split("T")[0]
       };
 
-      tareas.push(nuevaTarea);
-      enviarJSON(response, nuevaTarea, 201);
-      return;
+      tareas.push(nueva);
+      log(`Tarea creada: ${nueva.id}`);
+      return enviarJSON(res, nueva, 201);
+
+    } catch (e) {
+      return enviarJSON(res, { error: e }, 400);
     }
-
-    // PUT /api/tareas/:id - Actualizar tarea
-    if (method === 'PUT' && pathname.startsWith('/api/tareas/')) {
-      const id = parseInt(pathname.split('/')[3]);
-      const data = await obtenerCuerpo(request);
-
-      const indice = tareas.findIndex(t => t.id === id);
-      if (indice === -1) {
-        enviarJSON(response, { error: 'Tarea no encontrada' }, 404);
-        return;
-      }
-
-      // Actualizar solo los campos proporcionados
-      const tareaActualizada = { ...tareas[indice], ...data };
-      tareas[indice] = tareaActualizada;
-
-      enviarJSON(response, tareaActualizada);
-      return;
-    }
-
-    // DELETE /api/tareas/:id - Eliminar tarea
-    if (method === 'DELETE' && pathname.startsWith('/api/tareas/')) {
-      const id = parseInt(pathname.split('/')[3]);
-      const indice = tareas.findIndex(t => t.id === id);
-
-      if (indice === -1) {
-        enviarJSON(response, { error: 'Tarea no encontrada' }, 404);
-        return;
-      }
-
-      const tareaEliminada = tareas.splice(indice, 1)[0];
-      enviarJSON(response, { mensaje: 'Tarea eliminada', tarea: tareaEliminada });
-      return;
-    }
-
-    // GET / - Interfaz web
-    if (method === 'GET' && pathname === '/') {
-      const html = `
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>API de Tareas - Node.js</title>
-          <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            .endpoint { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; }
-            .method { font-weight: bold; color: #007acc; }
-            code { background: #e8e8e8; padding: 2px 4px; border-radius: 3px; }
-            pre { background: #f8f8f8; padding: 10px; border-radius: 5px; overflow-x: auto; }
-          </style>
-        </head>
-        <body>
-          <h1>🚀 API de Gestión de Tareas</h1>
-          <p>Servidor HTTP creado con Node.js puro</p>
-
-          <h2>📋 Endpoints Disponibles</h2>
-
-          <div class="endpoint">
-            <span class="method">GET</span> <code>/api/tareas</code>
-            <p>Listar todas las tareas. Parámetros opcionales: <code>completada</code>, <code>prioridad</code>, <code>q</code> (búsqueda)</p>
-          </div>
-
-          <div class="endpoint">
-            <span class="method">GET</span> <code>/api/tareas/:id</code>
-            <p>Obtener tarea específica por ID</p>
-          </div>
-
-          <div class="endpoint">
-            <span class="method">POST</span> <code>/api/tareas</code>
-            <p>Crear nueva tarea</p>
-            <pre>{
-  "titulo": "Mi nueva tarea",
-  "descripcion": "Descripción opcional",
-  "prioridad": "alta|media|baja"
-}</pre>
-          </div>
-
-          <div class="endpoint">
-            <span class="method">PUT</span> <code>/api/tareas/:id</code>
-            <p>Actualizar tarea existente</p>
-          </div>
-
-          <div class="endpoint">
-            <span class="method">DELETE</span> <code>/api/tareas/:id</code>
-            <p>Eliminar tarea</p>
-          </div>
-
-          <h2>🧪 Ejemplos de Uso</h2>
-          <h3>Listar tareas:</h3>
-          <pre>curl http://localhost:3000/api/tareas</pre>
-
-          <h3>Crear tarea:</h3>
-          <pre>curl -X POST -H "Content-Type: application/json" \
-  -d '{"titulo":"Aprender HTTP","descripcion":"Estudiar protocolos web"}' \
-  http://localhost:3000/api/tareas</pre>
-
-          <h3>Buscar tareas:</h3>
-          <pre>curl "http://localhost:3000/api/tareas?q=aprender"</pre>
-
-          <h3>Filtrar por estado:</h3>
-          <pre>curl "http://localhost:3000/api/tareas?completada=false"</pre>
-
-          <p><strong>Estado actual:</strong> ${tareas.length} tareas registradas</p>
-        </body>
-        </html>
-      `;
-
-      enviarHTML(response, html);
-      return;
-    }
-
-    // 404 - Ruta no encontrada
-    enviarJSON(response, {
-      error: 'Ruta no encontrada',
-      metodo: method,
-      ruta: pathname,
-      disponibles: ['GET /', 'GET /api/tareas', 'POST /api/tareas', 'GET /api/tareas/:id', 'PUT /api/tareas/:id', 'DELETE /api/tareas/:id']
-    }, 404);
-
-  } catch (error) {
-    console.error('Error en el servidor:', error);
-    enviarJSON(response, { error: 'Error interno del servidor', detalle: error.message }, 500);
   }
+
+  // --- ACTUALIZAR ---
+  if (method === "PUT" && pathname.startsWith("/api/tareas/")) {
+    const id = parseInt(pathname.split("/")[3]);
+    const idx = tareas.findIndex(t => t.id === id);
+    if (idx === -1) return enviarJSON(res, { error: "No encontrada" }, 404);
+
+    try {
+      const body = await obtenerCuerpo(req);
+      const errores = validarTarea({ ...tareas[idx], ...body });
+      if (errores.length) return enviarJSON(res, { errores }, 400);
+
+      tareas[idx] = { ...tareas[idx], ...body };
+      log(`Tarea actualizada: ${id}`);
+      return enviarJSON(res, tareas[idx]);
+
+    } catch {
+      return enviarJSON(res, { error: "JSON inválido" }, 400);
+    }
+  }
+
+  // --- ELIMINAR ---
+  if (method === "DELETE" && pathname.startsWith("/api/tareas/")) {
+    const id = parseInt(pathname.split("/")[3]);
+    const idx = tareas.findIndex(t => t.id === id);
+    if (idx === -1) return enviarJSON(res, { error: "No encontrada" }, 404);
+
+    const eliminada = tareas.splice(idx, 1)[0];
+    log(`Tarea eliminada: ${id}`);
+    return enviarJSON(res, { eliminada });
+  }
+
+  // --- ESTADÍSTICAS ---
+  if (method === "GET" && pathname === "/api/estadisticas") {
+    const porPrioridad = tareas.reduce((acc, t) => {
+      acc[t.prioridad] = (acc[t.prioridad] || 0) + 1;
+      return acc;
+    }, {});
+
+    const completadasPorFecha = tareas
+      .filter(t => t.completada)
+      .reduce((acc, t) => {
+        acc[t.fechaCreacion] = (acc[t.fechaCreacion] || 0) + 1;
+        return acc;
+      }, {});
+
+    return enviarJSON(res, { porPrioridad, completadasPorFecha });
+  }
+
+  enviarJSON(res, { error: "Ruta no encontrada" }, 404);
 });
 
-servidor.listen(3000, () => {
-  console.log('🚀 API REST de Tareas ejecutándose en http://localhost:3000');
-  console.log('📖 Documentación en http://localhost:3000');
-  console.log('🔧 Prueba los endpoints con curl o tu navegador');
-});
+// --- INTERFAZ WEB ---
+const INTERFAZ_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Gestión de Tareas</title>
+  <style>
+    body { font-family: Arial; padding: 20px; max-width: 600px; margin: auto; }
+    input, button { padding: 8px; margin: 5px 0; width: 100%; }
+    .tarea { background: #eee; padding: 10px; margin: 5px 0; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Gestión de Tareas (API + UI)</h1>
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\n👋 Cerrando servidor...');
-  servidor.close(() => {
-    console.log('✅ Servidor cerrado correctamente');
-    process.exit(0);
-  });
-});
+  <input id="titulo" placeholder="Título" />
+  <input id="descripcion" placeholder="Descripción" />
+  <select id="prioridad">
+    <option value="alta">Alta</option>
+    <option value="media">Media</option>
+    <option value="baja">Baja</option>
+  </select>
+  <button onclick="crear()">Crear tarea</button>
+
+  <h2>Tareas</h2>
+  <div id="lista"></div>
+
+  <script>
+    const KEY = "12345";
+
+    async function cargar() {
+      const res = await fetch("/api/tareas", { headers: { "x-api-key": KEY } });
+      const data = await res.json();
+      const cont = document.getElementById("lista");
+      cont.innerHTML = "";
+      data.tareas.forEach(t => {
+        cont.innerHTML += \`
+          <div class="tarea">
+            <strong>\${t.titulo}</strong> (\${t.prioridad})<br>
+            \${t.descripcion}<br>
+            Completada: \${t.completada}
+          </div>
+        \`;
+      });
+    }
+
+    async function crear() {
+      await fetch("/api/tareas", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": KEY
+        },
+        body: JSON.stringify({
+          titulo: document.getElementById("titulo").value,
+          descripcion: document.getElementById("descripcion").value,
+          prioridad: document.getElementById("prioridad").value
+        })
+      });
+      cargar();
+    }
+
+    cargar();
+  </script>
+</body>
+</html>
+`;
+
+server.listen(3000, () => console.log("Servidor iniciado en http://localhost:3000"));
